@@ -47,7 +47,10 @@ public struct MenuBarPopover: View {
             .padding(.vertical, 6)
         }
         .frame(width: 260)
-        .onAppear { manager.viewAppeared() }
+        .onAppear {
+            manager.initialize()
+            manager.viewAppeared()
+        }
         .onDisappear { manager.viewDisappeared() }
     }
 

@@ -1,27 +1,31 @@
 // Sources/TiltAdminLib/Models/TiltResource.swift
 import Foundation
 
-public struct UIResourceList: Codable {
+public struct UIResourceList: Codable, Sendable {
     public let items: [UIResource]
 }
 
-public struct UIResource: Codable {
+public struct UIResource: Codable, Sendable {
     public let metadata: UIResourceMetadata
     public let status: UIResourceStatus?
 }
 
-public struct UIResourceMetadata: Codable {
+public struct UIResourceMetadata: Codable, Sendable {
     public let name: String
 }
 
-public struct UIResourceStatus: Codable {
+public struct UIResourceStatus: Codable, Sendable {
     public let runtimeStatus: String?
     public let updateStatus: String?
     public let disableStatus: DisableStatus?
 }
 
-public struct DisableStatus: Codable {
-    public let disabled: Bool?
+public struct DisableStatus: Codable, Sendable {
+    public let state: String?
+
+    public var isDisabled: Bool {
+        state == "Disabled"
+    }
 }
 
 public enum RuntimeStatus: String, Sendable {

@@ -18,11 +18,15 @@ public final class TiltManager {
     private var pollingTask: Task<Void, Never>?
     private var visibilityCount = 0
 
+    private var initialized = false
+
     public init() {}
 
     // MARK: - Lifecycle
 
     public func initialize() {
+        guard !initialized else { return }
+        initialized = true
         loadConfig()
         Task { await checkTilt() }
     }
@@ -129,7 +133,7 @@ public final class TiltManager {
         // Overlay Tilt runtime data
         for resource in resources {
             let name = resource.metadata.name
-            let isDisabled = resource.status?.disableStatus?.disabled ?? false
+            let isDisabled = resource.status?.disableStatus?.isDisabled ?? false
 
             if var existing = merged[name] {
                 existing.isEnabled = !isDisabled
