@@ -98,40 +98,61 @@ public actor TiltClient {
     }
 
     @discardableResult
-    private func runTilt(arguments: [String]) async throws -> String {
+    private nonisolated func runTilt(arguments: [String]) async throws -> String {
         guard let tiltPath else { throw TiltError.notInstalled }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: tiltPath)
         process.arguments = arguments
 
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        // Collect pipe data in background to avoid deadlock when output is large
+        var outData = Data()
+        var errData = Data()
+        let outHandle = stdoutPipe.fileHandleForReading
+        let errHandle = stderrPipe.fileHandleForReading
 
         try process.run()
 
         let pid = process.processIdentifier
-        let timeoutTask = Task {
-            try await Task.sleep(for: .seconds(timeoutSeconds))
-            kill(pid, SIGTERM)
-        }
+        let timeout = self.timeoutSeconds
 
-        process.waitUntilExit()
-        timeoutTask.cancel()
-
-        let outData = stdout.fileHandleForReading.readDataToEndOfFile()
-        let errData = stderr.fileHandleForReading.readDataToEndOfFile()
-
-        if process.terminationStatus != 0 {
-            let errMsg = String(data: errData, encoding: .utf8) ?? "Unknown error"
-            if process.terminationStatus == 15 { // SIGTERM
-                throw TiltError.timeout
+        // Read stdout/stderr concurrently, then wait for termination
+        return try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global().async {
+                outData = outHandle.readDataToEndOfFile()
             }
-            throw TiltError.commandFailed(errMsg.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
+            DispatchQueue.global().async {
+                errData = errHandle.readDataToEndOfFile()
+            }
 
-        return String(data: outData, encoding: .utf8) ?? ""
+            process.terminationHandler = { proc in
+                // Give pipe reads a moment to finish
+                DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
+                    if proc.terminationStatus != 0 {
+                        let errMsg = String(data: errData, encoding: .utf8) ?? "Unknown error"
+                        if proc.terminationStatus == 15 {
+                            continuation.resume(throwing: TiltError.timeout)
+                        } else {
+                            continuation.resume(throwing: TiltError.commandFailed(errMsg.trimmingCharacters(in: .whitespacesAndNewlines)))
+                        }
+                    } else {
+                        continuation.resume(returning: String(data: outData, encoding: .utf8) ?? "")
+                    }
+                }
+            }
+
+            // Timeout
+            Task {
+                try await Task.sleep(for: .seconds(timeout))
+                if process.isRunning {
+                    kill(pid, SIGTERM)
+                }
+            }
+        }
     }
 }
