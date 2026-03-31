@@ -16,7 +16,8 @@ let package = Package(
         .executableTarget(
             name: "TiltAdmin",
             dependencies: ["TiltAdminLib"],
-            path: "Sources/TiltAdmin"
+            path: "Sources/TiltAdmin",
+            resources: [.process("AppIcon.icns")]
         ),
         .testTarget(
             name: "TiltAdminTests",

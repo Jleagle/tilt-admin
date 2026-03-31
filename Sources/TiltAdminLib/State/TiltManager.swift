@@ -139,6 +139,7 @@ public final class TiltManager {
                 existing.isEnabled = !isDisabled
                 existing.runtimeStatus = RuntimeStatus(from: resource.status?.runtimeStatus)
                 existing.updateStatus = UpdateStatus(from: resource.status?.updateStatus)
+                existing.existsInTilt = true
                 merged[name] = existing
             } else {
                 merged[name] = MergedService(
@@ -146,7 +147,8 @@ public final class TiltManager {
                     isEnabled: !isDisabled,
                     runtimeStatus: RuntimeStatus(from: resource.status?.runtimeStatus),
                     updateStatus: UpdateStatus(from: resource.status?.updateStatus),
-                    isConfigured: false
+                    isConfigured: false,
+                    existsInTilt: true
                 )
             }
         }
@@ -165,10 +167,14 @@ public final class TiltManager {
         let disabledDeps = deps.filter { dep in
             services.first(where: { $0.name == dep })?.isEnabled == false
         }
-        let toEnable = [name] + disabledDeps.sorted()
+        let toEnable = ([name] + disabledDeps.sorted()).filter { svcName in
+            services.first(where: { $0.name == svcName })?.existsInTilt == true
+        }
 
         do {
-            try await tiltClient.enableServices(toEnable)
+            if !toEnable.isEmpty {
+                try await tiltClient.enableServices(toEnable)
+            }
             await refresh()
         } catch {
             self.error = error.localizedDescription
@@ -180,8 +186,22 @@ public final class TiltManager {
         isOperationInFlight = true
         defer { isOperationInFlight = false }
 
+        let existsInTilt = services.first(where: { $0.name == name })?.existsInTilt == true
+
         do {
-            try await tiltClient.disableServices([name])
+            if existsInTilt {
+                try await tiltClient.disableServices([name])
+            }
+            // Also disable children that exist in Tilt
+            if let graph {
+                let deps = graph.allTransitiveDeps(for: name)
+                let tiltDeps = deps.filter { dep in
+                    services.first(where: { $0.name == dep })?.existsInTilt == true
+                }.sorted()
+                if !tiltDeps.isEmpty {
+                    try await tiltClient.disableServices(tiltDeps)
+                }
+            }
             await refresh()
         } catch {
             self.error = error.localizedDescription
@@ -198,8 +218,30 @@ public final class TiltManager {
         let allTopLevelDeps = Set(topLevelServices.flatMap { $0.allTransitiveDeps })
         let topLevelNames = Set(topLevelServices.map { $0.name })
         return services.filter { svc in
-            !topLevelNames.contains(svc.name) && !allTopLevelDeps.contains(svc.name)
+            svc.existsInTilt
+            && !topLevelNames.contains(svc.name)
+            && !allTopLevelDeps.contains(svc.name)
         }
+    }
+
+    /// For YAML-only services, derive enabled state from whether any resolved Tilt children are enabled
+    public func isEffectivelyEnabled(_ service: MergedService) -> Bool {
+        if service.existsInTilt { return service.isEnabled }
+        return resolvedTiltChildren(for: service, seen: []).contains { $0.isEnabled }
+    }
+
+    private func resolvedTiltChildren(for service: MergedService, seen: Set<String>) -> [MergedService] {
+        var result: [MergedService] = []
+        for dep in service.directDeps {
+            guard !seen.contains(dep) else { continue }
+            guard let svc = services.first(where: { $0.name == dep }) else { continue }
+            if svc.existsInTilt {
+                result.append(svc)
+            } else {
+                result.append(contentsOf: resolvedTiltChildren(for: svc, seen: seen.union([dep])))
+            }
+        }
+        return result
     }
 
     public var enabledCount: Int { services.filter(\.isEnabled).count }

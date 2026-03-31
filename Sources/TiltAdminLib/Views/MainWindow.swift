@@ -8,7 +8,7 @@ public struct MainWindow: View {
     public init() {}
 
     public var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: .constant(.all)) {
             ServiceSidebar(selectedService: $selectedService)
         } detail: {
             if let selectedService {
@@ -21,6 +21,8 @@ public struct MainWindow: View {
                 )
             }
         }
+        .navigationSplitViewStyle(.prominentDetail)
+        .toolbar(removing: .sidebarToggle)
         .navigationTitle("Tilt Admin")
         .overlay(alignment: .bottom) {
             statusBar

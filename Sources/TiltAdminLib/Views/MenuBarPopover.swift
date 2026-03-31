@@ -93,7 +93,9 @@ public struct MenuBarPopover: View {
         case .ok: return .green
         case .pending: return .yellow
         case .error: return .red
-        case .notApplicable, .unknown: return .gray
+        case .notApplicable:
+            return service.updateStatus == .ok ? .green : .gray
+        case .unknown: return .gray
         }
     }
 }

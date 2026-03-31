@@ -48,10 +48,13 @@ public struct ServiceDetail: View {
         }
 
         HStack(spacing: 16) {
-            Label(service.isEnabled ? "Enabled" : "Disabled",
-                  systemImage: service.isEnabled ? "checkmark.circle.fill" : "xmark.circle")
-            Label("Runtime: \(service.runtimeStatus.rawValue)", systemImage: "server.rack")
-            Label("Update: \(service.updateStatus.rawValue)", systemImage: "arrow.clockwise")
+            let enabled = manager.isEffectivelyEnabled(service)
+            Label(enabled ? "Enabled" : "Disabled",
+                  systemImage: enabled ? "checkmark.circle.fill" : "xmark.circle")
+            if service.existsInTilt {
+                Label("Runtime: \(service.runtimeStatus.rawValue)", systemImage: "server.rack")
+                Label("Update: \(service.updateStatus.rawValue)", systemImage: "arrow.clockwise")
+            }
         }
         .font(.subheadline)
         .foregroundStyle(.secondary)
@@ -59,8 +62,9 @@ public struct ServiceDetail: View {
 
     @ViewBuilder
     private func toggleSection(_ service: MergedService) -> some View {
+        let enabled = manager.isEffectivelyEnabled(service)
         HStack {
-            if service.isEnabled {
+            if enabled {
                 Button("Disable") {
                     Task { await manager.disableService(service.name) }
                 }
@@ -135,7 +139,9 @@ public struct ServiceDetail: View {
         case .ok: return .green
         case .pending: return .yellow
         case .error: return .red
-        case .notApplicable, .unknown: return .gray
+        case .notApplicable:
+            return service.updateStatus == .ok ? .green : .gray
+        case .unknown: return .gray
         }
     }
 }

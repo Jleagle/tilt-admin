@@ -9,6 +9,7 @@ public struct MergedService: Identifiable, Sendable {
     public var updateStatus: UpdateStatus
     public var isTopLevel: Bool
     public var isConfigured: Bool
+    public var existsInTilt: Bool
     public var directDeps: Set<String>
     public var allTransitiveDeps: Set<String>
     public var dependedOnBy: Set<String>
@@ -20,6 +21,7 @@ public struct MergedService: Identifiable, Sendable {
         updateStatus: UpdateStatus = .unknown,
         isTopLevel: Bool = false,
         isConfigured: Bool = false,
+        existsInTilt: Bool = false,
         directDeps: Set<String> = [],
         allTransitiveDeps: Set<String> = [],
         dependedOnBy: Set<String> = []
@@ -31,6 +33,7 @@ public struct MergedService: Identifiable, Sendable {
         self.updateStatus = updateStatus
         self.isTopLevel = isTopLevel
         self.isConfigured = isConfigured
+        self.existsInTilt = existsInTilt
         self.directDeps = directDeps
         self.allTransitiveDeps = allTransitiveDeps
         self.dependedOnBy = dependedOnBy
