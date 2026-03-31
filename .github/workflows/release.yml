@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build universal binary
+        run: |
+          swift build -c release --arch arm64 --arch x86_64
+
+      - name: Package binary
+        run: |
+          BINARY=".build/apple/Products/Release/TiltAdmin"
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARCHIVE="tilt-admin-${VERSION}-universal-macos.tar.gz"
+
+          mkdir -p dist/tilt-admin/bin
+          cp "$BINARY" dist/tilt-admin/bin/tilt-admin
+          cp dependencies.yml dist/tilt-admin/
+
+          tar -czf "$ARCHIVE" -C dist tilt-admin
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          shasum -a 256 "$ARCHIVE" | awk '{print $1}' > sha256.txt
+          echo "SHA256=$(cat sha256.txt)" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$ARCHIVE" \
+            --title "Tilt Admin $VERSION" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Homebrew tap
+        run: |
+          SHA256=$(cat sha256.txt)
+          VERSION="${VERSION}"
+          URL="https://github.com/jleagle/tilt-admin/releases/download/v${VERSION}/tilt-admin-${VERSION}-universal-macos.tar.gz"
+
+          cat > formula.rb << FORMULA
+          class TiltAdmin < Formula
+            desc "Native macOS app for managing Tilt dev services"
+            homepage "https://github.com/jleagle/tilt-admin"
+            url "${URL}"
+            sha256 "${SHA256}"
+            version "${VERSION}"
+
+            depends_on :macos
+
+            def install
+              bin.install "bin/tilt-admin"
+              etc.install "dependencies.yml" => "tilt-admin/dependencies.yml"
+            end
+          end
+          FORMULA
+
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/jleagle/homebrew-tilt-admin.git" tap
+          cp formula.rb tap/Formula/tilt-admin.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/tilt-admin.rb
+          git commit -m "Update tilt-admin to ${VERSION}"
+          git push
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
