@@ -21,7 +21,7 @@ extension TiltManager {
     public func aggregateColor(for service: MergedService, seen: Set<String> = []) -> Color {
         guard !seen.contains(service.name) else { return .gray }
         let seen = seen.union([service.name])
-        let children = tiltChildren(of: service).sorted { $0.name < $1.name }
+        let children = tiltChildren(of: service)
 
         // YAML-only services (not in Tilt) derive color purely from children
         if !service.existsInTilt {

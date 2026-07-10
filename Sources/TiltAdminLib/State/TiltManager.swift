@@ -163,6 +163,7 @@ public final class TiltManager {
         isOperationInFlight = true
         defer { isOperationInFlight = false }
 
+        // Must be computed before the first await — snapshot of the state the user acted on.
         let toEnable = resolver.enableSet(name).sorted()
 
         do {
@@ -180,6 +181,7 @@ public final class TiltManager {
         isOperationInFlight = true
         defer { isOperationInFlight = false }
 
+        // Must be computed before the first await — snapshot of the state the user acted on.
         let toDisable = resolver.disableSet(name).sorted()
 
         do {
@@ -237,6 +239,7 @@ public final class TiltManager {
     /// Direct children of an entity, resolving THROUGH YAML-only entities:
     /// a YAML-only child is replaced by its own resolved children.
     /// Result is deduplicated by name (shared deps appear once).
+    /// Order is not guaranteed (directDeps is a Set); callers sort.
     public func tiltChildren(of service: MergedService, seen: Set<String> = []) -> [MergedService] {
         var result: [MergedService] = []
         var names = Set<String>()
