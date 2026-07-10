@@ -159,17 +159,11 @@ public final class TiltManager {
     // MARK: - Enable / Disable
 
     public func enableService(_ name: String) async {
-        guard !isOperationInFlight, let graph else { return }
+        guard !isOperationInFlight else { return }
         isOperationInFlight = true
         defer { isOperationInFlight = false }
 
-        let deps = graph.allTransitiveDeps(for: name)
-        let disabledDeps = deps.filter { dep in
-            services.first(where: { $0.name == dep })?.isEnabled == false
-        }
-        let toEnable = ([name] + disabledDeps.sorted()).filter { svcName in
-            services.first(where: { $0.name == svcName })?.existsInTilt == true
-        }
+        let toEnable = resolver.enableSet(name).sorted()
 
         do {
             if !toEnable.isEmpty {
@@ -186,21 +180,11 @@ public final class TiltManager {
         isOperationInFlight = true
         defer { isOperationInFlight = false }
 
-        let existsInTilt = services.first(where: { $0.name == name })?.existsInTilt == true
+        let toDisable = resolver.disableSet(name).sorted()
 
         do {
-            if existsInTilt {
-                try await tiltClient.disableServices([name])
-            }
-            // Also disable children that exist in Tilt
-            if let graph {
-                let deps = graph.allTransitiveDeps(for: name)
-                let tiltDeps = deps.filter { dep in
-                    services.first(where: { $0.name == dep })?.existsInTilt == true
-                }.sorted()
-                if !tiltDeps.isEmpty {
-                    try await tiltClient.disableServices(tiltDeps)
-                }
+            if !toDisable.isEmpty {
+                try await tiltClient.disableServices(toDisable)
             }
             await refresh()
         } catch {
@@ -224,13 +208,35 @@ public final class TiltManager {
         }
     }
 
-    /// For YAML-only services, derive enabled state from whether any resolved Tilt children are enabled
-    public func isEffectivelyEnabled(_ service: MergedService) -> Bool {
-        if service.existsInTilt { return service.isEnabled }
-        return resolvedTiltChildren(for: service, seen: []).contains { $0.isEnabled }
+    // MARK: - Resolver
+
+    /// Fresh snapshot of dependency state; cheap to rebuild per evaluation.
+    private var resolver: DependencyResolver {
+        DependencyResolver(
+            graph: graph ?? DependencyGraph(dependencies: [:]),
+            topLevel: Set(services.filter(\.isTopLevel).map(\.name)),
+            existsInTilt: Set(services.filter(\.existsInTilt).map(\.name)),
+            enabled: Set(services.filter { $0.existsInTilt && $0.isEnabled }.map(\.name))
+        )
     }
 
-    private func resolvedTiltChildren(for service: MergedService, seen: Set<String>) -> [MergedService] {
+    public func entityState(_ name: String) -> EntityState {
+        resolver.state(name)
+    }
+
+    /// Resources that would additionally be enabled by enableService(name).
+    public func pendingEnables(for name: String) -> [String] {
+        resolver.enableSet(name).subtracting([name]).sorted()
+    }
+
+    /// Resources that would additionally be disabled by disableService(name).
+    public func pendingDisables(for name: String) -> [String] {
+        resolver.disableSet(name).subtracting([name]).sorted()
+    }
+
+    /// Direct children of an entity, resolving THROUGH YAML-only entities:
+    /// a YAML-only child is replaced by its own resolved children.
+    public func tiltChildren(of service: MergedService, seen: Set<String> = []) -> [MergedService] {
         var result: [MergedService] = []
         for dep in service.directDeps {
             guard !seen.contains(dep) else { continue }
@@ -238,10 +244,16 @@ public final class TiltManager {
             if svc.existsInTilt {
                 result.append(svc)
             } else {
-                result.append(contentsOf: resolvedTiltChildren(for: svc, seen: seen.union([dep])))
+                result.append(contentsOf: tiltChildren(of: svc, seen: seen.union([dep])))
             }
         }
         return result
+    }
+
+    /// Deprecated by entityState(_:); removed in the UI task.
+    public func isEffectivelyEnabled(_ service: MergedService) -> Bool {
+        if service.existsInTilt { return service.isEnabled }
+        return tiltChildren(of: service).contains { $0.isEnabled }
     }
 
     public var enabledCount: Int { services.filter(\.isEnabled).count }
