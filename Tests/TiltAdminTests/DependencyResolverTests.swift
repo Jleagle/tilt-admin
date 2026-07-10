@@ -161,6 +161,35 @@ struct DependencyResolverTests {
         #expect(r.disableSet("topA").isEmpty)
     }
 
+    @Test("Disable set is empty when everything is protected and target is YAML-only")
+    func disableSetEmptyWhenFullyProtected() {
+        // Variant graph: both YAML-only-rooted top-levels share the same single dep
+        let graph = DependencyGraph(dependencies: [
+            "topA": ["shared"],
+            "topB": ["shared"],
+        ])
+        let r = DependencyResolver(
+            graph: graph,
+            topLevel: ["topA", "topB"],
+            existsInTilt: ["shared"],
+            enabled: ["shared"]
+        )
+        // topB is fully on and protects shared; topA is YAML-only so nothing remains
+        #expect(r.disableSet("topA").isEmpty)
+    }
+
+    @Test("Unconfigured Tilt-only entity cascades to itself alone")
+    func disableUnconfiguredEntity() {
+        let r = DependencyResolver(
+            graph: Self.graph,
+            topLevel: Self.topLevel,
+            existsInTilt: Self.inTilt.union(["orphan"]),
+            enabled: Self.allOn.union(["orphan"])
+        )
+        #expect(r.disableSet("orphan") == ["orphan"])
+        #expect(r.enableSet("orphan").isEmpty)
+    }
+
     @Test("Cyclic graph terminates and disables the cycle")
     func disableCycle() {
         let graph = DependencyGraph(dependencies: ["a": ["b"], "b": ["a"]])
