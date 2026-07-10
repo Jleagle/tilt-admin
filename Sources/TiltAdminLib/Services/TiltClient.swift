@@ -88,13 +88,25 @@ public actor TiltClient {
     }
 
     public func enableServices(_ names: [String]) async throws {
-        guard !names.isEmpty else { return }
-        try await runTilt(arguments: ["enable"] + names)
+        try await runLoggedTilt(arguments: ["enable"] + names)
     }
 
     public func disableServices(_ names: [String]) async throws {
-        guard !names.isEmpty else { return }
-        try await runTilt(arguments: ["disable"] + names)
+        try await runLoggedTilt(arguments: ["disable"] + names)
+    }
+
+    /// Runs a state-changing tilt command, logging the command line and any failure.
+    /// The status poll (fetchResources) deliberately bypasses this to keep logs quiet.
+    private func runLoggedTilt(arguments: [String]) async throws {
+        guard arguments.count > 1 else { return }
+        let command = (["tilt"] + arguments).joined(separator: " ")
+        TiltLog.command(command)
+        do {
+            try await runTilt(arguments: arguments)
+        } catch {
+            TiltLog.failure("\(command) — \(error.localizedDescription)")
+            throw error
+        }
     }
 
     @discardableResult
