@@ -1,9 +1,8 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -26,7 +25,6 @@ jobs:
 
           mkdir -p dist/tilt-admin/bin
           cp "$BINARY" dist/tilt-admin/bin/tilt-admin
-          cp dependencies.yml dist/tilt-admin/
 
           tar -czf "$ARCHIVE" -C dist tilt-admin
           echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
@@ -34,18 +32,15 @@ jobs:
           shasum -a 256 "$ARCHIVE" | awk '{print $1}' > sha256.txt
           echo "SHA256=$(cat sha256.txt)" >> "$GITHUB_ENV"
 
-      - name: Create GitHub Release
+      - name: Attach binary to release
         run: |
-          gh release create "$GITHUB_REF_NAME" "$ARCHIVE" \
-            --title "Tilt Admin $VERSION" \
-            --generate-notes
+          gh release upload "$GITHUB_REF_NAME" "$ARCHIVE" --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update Homebrew tap
+      - name: Update Homebrew formula
         run: |
           SHA256=$(cat sha256.txt)
-          VERSION="${VERSION}"
           URL="https://github.com/jleagle/tilt-admin/releases/download/v${VERSION}/tilt-admin-${VERSION}-universal-macos.tar.gz"
 
           cat > formula.rb << FORMULA
@@ -60,18 +55,24 @@ jobs:
 
             def install
               bin.install "bin/tilt-admin"
-              etc.install "dependencies.yml" => "tilt-admin/dependencies.yml"
+            end
+
+            def caveats
+              <<~EOS
+                tilt-admin needs a config describing your Tilt service dependencies.
+                Create one at ~/.tilt-admin.yml — see
+                https://github.com/jleagle/tilt-admin#configuration
+              EOS
             end
           end
           FORMULA
 
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/jleagle/homebrew-tilt-admin.git" tap
-          cp formula.rb tap/Formula/tilt-admin.rb
-          cd tap
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -B main FETCH_HEAD
+          mkdir -p Formula
+          cp formula.rb Formula/tilt-admin.rb
           git add Formula/tilt-admin.rb
-          git commit -m "Update tilt-admin to ${VERSION}"
-          git push
-        env:
-          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+          git commit -m "Update tilt-admin formula to ${VERSION}"
+          git push origin main
