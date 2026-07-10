@@ -96,6 +96,13 @@ struct DependencyResolverTests {
         #expect(r.enableSet("topA").isEmpty)
     }
 
+    @Test("Enable set is empty for an entity resolving to no Tilt resources")
+    func enableSetEmptyResolvedSet() {
+        // A top-level with no deps that isn't in Tilt itself can never act
+        let r = resolver(enabled: [])
+        #expect(r.enableSet("ghost").isEmpty)
+    }
+
     // MARK: - disableSet
 
     @Test("Shared dep protected when another top-level is fully on")

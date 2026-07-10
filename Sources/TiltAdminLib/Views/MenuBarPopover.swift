@@ -56,6 +56,8 @@ public struct MenuBarPopover: View {
 
     @ViewBuilder
     private func menuBarServiceRow(_ service: MergedService) -> some View {
+        let state = manager.entityState(service.name)
+        let noOpReason = toggleNoOpReason(for: service.name, state: state)
         HStack(spacing: 8) {
             Circle()
                 .fill(manager.aggregateColor(for: service))
@@ -68,7 +70,7 @@ public struct MenuBarPopover: View {
             Spacer()
 
             Toggle("", isOn: Binding(
-                get: { manager.entityState(service.name) == .on },
+                get: { state == .on },
                 set: { newValue in
                     Task {
                         if newValue {
@@ -81,9 +83,21 @@ public struct MenuBarPopover: View {
             ))
             .toggleStyle(.switch)
             .controlSize(.small)
-            .disabled(manager.isOperationInFlight)
+            .disabled(manager.isOperationInFlight || noOpReason != nil)
+            .help(noOpReason ?? "")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
+    }
+
+    /// Why flipping this toggle would do nothing, or nil if it would act.
+    private func toggleNoOpReason(for name: String, state: EntityState) -> String? {
+        if state == .on {
+            guard manager.disableIsNoOp(name) else { return nil }
+            return "Everything this needs is still used by other enabled services."
+        } else {
+            guard manager.enableIsNoOp(name) else { return nil }
+            return "No Tilt resources resolve for this entry — check dependencies.yml."
+        }
     }
 }
