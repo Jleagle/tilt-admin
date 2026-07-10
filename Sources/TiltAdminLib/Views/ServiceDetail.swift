@@ -40,7 +40,7 @@ public struct ServiceDetail: View {
     private func header(_ service: MergedService) -> some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(statusColor(for: service))
+                .fill(manager.aggregateColor(for: service))
                 .frame(width: 12, height: 12)
             Text(service.name)
                 .font(.title)
@@ -48,9 +48,12 @@ public struct ServiceDetail: View {
         }
 
         HStack(spacing: 16) {
-            let enabled = manager.isEffectivelyEnabled(service)
-            Label(enabled ? "Enabled" : "Disabled",
-                  systemImage: enabled ? "checkmark.circle.fill" : "xmark.circle")
+            let state = manager.entityState(service.name)
+            Label(
+                state == .on ? "Enabled" : state == .partial ? "Partially enabled" : "Disabled",
+                systemImage: state == .on ? "checkmark.circle.fill"
+                    : state == .partial ? "circle.bottomhalf.filled" : "xmark.circle"
+            )
             if service.existsInTilt {
                 Label("Runtime: \(service.runtimeStatus.rawValue)", systemImage: "server.rack")
                 Label("Update: \(service.updateStatus.rawValue)", systemImage: "arrow.clockwise")
@@ -62,28 +65,37 @@ public struct ServiceDetail: View {
 
     @ViewBuilder
     private func toggleSection(_ service: MergedService) -> some View {
-        let enabled = manager.isEffectivelyEnabled(service)
-        HStack {
-            if enabled {
-                Button("Disable") {
-                    Task { await manager.disableService(service.name) }
+        let state = manager.entityState(service.name)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                if state != .on {
+                    Button("Enable") {
+                        Task { await manager.enableService(service.name) }
+                    }
+                    .tint(.green)
                 }
-                .tint(.red)
-            } else {
-                Button("Enable") {
-                    Task { await manager.enableService(service.name) }
+                if state != .off {
+                    Button("Disable") {
+                        Task { await manager.disableService(service.name) }
+                    }
+                    .tint(.red)
                 }
-                .tint(.green)
+            }
 
-                if !service.allTransitiveDeps.isEmpty {
-                    let disabledDeps = service.allTransitiveDeps.filter { dep in
-                        manager.services.first(where: { $0.name == dep })?.isEnabled == false
-                    }
-                    if !disabledDeps.isEmpty {
-                        Text("Will also enable: \(disabledDeps.sorted().joined(separator: ", "))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+            if state != .on {
+                let alsoEnable = manager.pendingEnables(for: service.name)
+                if !alsoEnable.isEmpty {
+                    Text("Will also enable: \(alsoEnable.joined(separator: ", "))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if state != .off {
+                let alsoDisable = manager.pendingDisables(for: service.name)
+                if !alsoDisable.isEmpty {
+                    Text("Will also disable: \(alsoDisable.joined(separator: ", "))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -120,7 +132,7 @@ public struct ServiceDetail: View {
             } label: {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(statusColor(for: dep))
+                        .fill(manager.aggregateColor(for: dep))
                         .frame(width: 6, height: 6)
                     Text(name)
                         .foregroundStyle(.blue)
@@ -130,18 +142,6 @@ public struct ServiceDetail: View {
         } else {
             Text(name)
                 .foregroundStyle(.secondary)
-        }
-    }
-
-    private func statusColor(for service: MergedService) -> Color {
-        guard service.isEnabled else { return .gray }
-        switch service.runtimeStatus {
-        case .ok: return .green
-        case .pending: return .yellow
-        case .error: return .red
-        case .notApplicable:
-            return service.updateStatus == .ok ? .green : .gray
-        case .unknown: return .gray
         }
     }
 }

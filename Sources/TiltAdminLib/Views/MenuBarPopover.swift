@@ -58,7 +58,7 @@ public struct MenuBarPopover: View {
     private func menuBarServiceRow(_ service: MergedService) -> some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(statusColor(for: service))
+                .fill(manager.aggregateColor(for: service))
                 .frame(width: 8, height: 8)
 
             Text(service.name)
@@ -68,7 +68,7 @@ public struct MenuBarPopover: View {
             Spacer()
 
             Toggle("", isOn: Binding(
-                get: { service.isEnabled },
+                get: { manager.entityState(service.name) == .on },
                 set: { newValue in
                     Task {
                         if newValue {
@@ -85,17 +85,5 @@ public struct MenuBarPopover: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
-    }
-
-    private func statusColor(for service: MergedService) -> Color {
-        guard service.isEnabled else { return .gray }
-        switch service.runtimeStatus {
-        case .ok: return .green
-        case .pending: return .yellow
-        case .error: return .red
-        case .notApplicable:
-            return service.updateStatus == .ok ? .green : .gray
-        case .unknown: return .gray
-        }
     }
 }

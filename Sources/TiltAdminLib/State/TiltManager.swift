@@ -261,12 +261,6 @@ public final class TiltManager {
         return result
     }
 
-    /// Deprecated by entityState(_:); removed in the UI task.
-    public func isEffectivelyEnabled(_ service: MergedService) -> Bool {
-        if service.existsInTilt { return service.isEnabled }
-        return tiltChildren(of: service).contains { $0.isEnabled }
-    }
-
     public var enabledCount: Int { services.filter(\.isEnabled).count }
     public var totalCount: Int { services.count }
 }
