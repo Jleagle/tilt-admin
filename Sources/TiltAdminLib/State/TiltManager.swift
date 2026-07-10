@@ -164,7 +164,7 @@ public final class TiltManager {
         defer { isOperationInFlight = false }
 
         // Must be computed before the first await — snapshot of the state the user acted on.
-        let toEnable = resolver.enableSet(name).sorted()
+        let toEnable = makeResolver().enableSet(name).sorted()
 
         do {
             if !toEnable.isEmpty {
@@ -182,7 +182,7 @@ public final class TiltManager {
         defer { isOperationInFlight = false }
 
         // Must be computed before the first await — snapshot of the state the user acted on.
-        let toDisable = resolver.disableSet(name).sorted()
+        let toDisable = makeResolver().disableSet(name).sorted()
 
         do {
             if !toDisable.isEmpty {
@@ -212,8 +212,9 @@ public final class TiltManager {
 
     // MARK: - Resolver
 
-    /// Fresh snapshot of dependency state; cheap to rebuild per evaluation.
-    private var resolver: DependencyResolver {
+    /// Builds a fresh dependency-state snapshot. Each call sees the current
+    /// `services`; never hold one across an await.
+    private func makeResolver() -> DependencyResolver {
         DependencyResolver(
             graph: graph ?? DependencyGraph(dependencies: [:]),
             topLevel: Set(services.filter(\.isTopLevel).map(\.name)),
@@ -223,17 +224,28 @@ public final class TiltManager {
     }
 
     public func entityState(_ name: String) -> EntityState {
-        resolver.state(name)
+        makeResolver().state(name)
     }
 
     /// Resources that would additionally be enabled by enableService(name).
     public func pendingEnables(for name: String) -> [String] {
-        resolver.enableSet(name).subtracting([name]).sorted()
+        makeResolver().enableSet(name).subtracting([name]).sorted()
     }
 
     /// Resources that would additionally be disabled by disableService(name).
     public func pendingDisables(for name: String) -> [String] {
-        resolver.disableSet(name).subtracting([name]).sorted()
+        makeResolver().disableSet(name).subtracting([name]).sorted()
+    }
+
+    /// True when enableService(name) would issue no CLI call.
+    public func enableIsNoOp(_ name: String) -> Bool {
+        makeResolver().enableSet(name).isEmpty
+    }
+
+    /// True when disableService(name) would issue no CLI call
+    /// (everything is protected by other fully-on top-level entities).
+    public func disableIsNoOp(_ name: String) -> Bool {
+        makeResolver().disableSet(name).isEmpty
     }
 
     /// Direct children of an entity, resolving THROUGH YAML-only entities:

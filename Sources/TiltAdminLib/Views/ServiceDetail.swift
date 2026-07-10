@@ -68,7 +68,7 @@ public struct ServiceDetail: View {
         let state = manager.entityState(service.name)
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                if state != .on {
+                if state != .on && !manager.enableIsNoOp(service.name) {
                     Button("Enable") {
                         Task { await manager.enableService(service.name) }
                     }
@@ -79,6 +79,7 @@ public struct ServiceDetail: View {
                         Task { await manager.disableService(service.name) }
                     }
                     .tint(.red)
+                    .disabled(manager.disableIsNoOp(service.name))
                 }
             }
 
@@ -97,6 +98,11 @@ public struct ServiceDetail: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+            if state != .off && manager.disableIsNoOp(service.name) {
+                Text("Everything this needs is still used by other enabled services.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .disabled(manager.isOperationInFlight)
