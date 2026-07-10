@@ -236,15 +236,23 @@ public final class TiltManager {
 
     /// Direct children of an entity, resolving THROUGH YAML-only entities:
     /// a YAML-only child is replaced by its own resolved children.
+    /// Result is deduplicated by name (shared deps appear once).
     public func tiltChildren(of service: MergedService, seen: Set<String> = []) -> [MergedService] {
         var result: [MergedService] = []
+        var names = Set<String>()
         for dep in service.directDeps {
             guard !seen.contains(dep) else { continue }
             guard let svc = services.first(where: { $0.name == dep }) else { continue }
             if svc.existsInTilt {
-                result.append(svc)
+                if names.insert(svc.name).inserted {
+                    result.append(svc)
+                }
             } else {
-                result.append(contentsOf: tiltChildren(of: svc, seen: seen.union([dep])))
+                for child in tiltChildren(of: svc, seen: seen.union([dep])) {
+                    if names.insert(child.name).inserted {
+                        result.append(child)
+                    }
+                }
             }
         }
         return result

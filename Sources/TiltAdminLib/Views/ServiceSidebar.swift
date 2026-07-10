@@ -21,7 +21,7 @@ public struct ServiceSidebar: View {
             if !filteredOther.isEmpty {
                 Section("Other") {
                     ForEach(filteredOther, id: \.id) { service in
-                        ServiceRow(service: service, statusColor: aggregateColor(for: service))
+                        ServiceRow(service: service, statusColor: manager.aggregateColor(for: service))
                             .tag(service.name)
                     }
                 }
@@ -34,7 +34,7 @@ public struct ServiceSidebar: View {
     private func serviceNode(_ service: MergedService, depth: Int) -> some View {
         let children = childServices(for: service)
         if children.isEmpty {
-            ServiceRow(service: service, statusColor: aggregateColor(for: service))
+            ServiceRow(service: service, statusColor: manager.aggregateColor(for: service))
                 .tag(service.name)
         } else {
             DisclosureGroup {
@@ -42,79 +42,15 @@ public struct ServiceSidebar: View {
                     AnyView(serviceNode(child, depth: depth + 1))
                 }
             } label: {
-                ServiceRow(service: service, statusColor: aggregateColor(for: service))
+                ServiceRow(service: service, statusColor: manager.aggregateColor(for: service))
                     .tag(service.name)
             }
         }
     }
 
     private func childServices(for service: MergedService) -> [MergedService] {
-        resolveChildren(for: service, seen: [])
+        manager.tiltChildren(of: service)
             .sorted { $0.name < $1.name }
-    }
-
-    /// Resolve through YAML-only services (not in Tilt): skip them but include their children
-    private func resolveChildren(for service: MergedService, seen: Set<String>) -> [MergedService] {
-        var result: [MergedService] = []
-        for dep in service.directDeps {
-            guard !seen.contains(dep) else { continue }
-            guard let svc = manager.services.first(where: { $0.name == dep }) else { continue }
-            if svc.existsInTilt {
-                result.append(svc)
-            } else {
-                result.append(contentsOf: resolveChildren(for: svc, seen: seen.union([dep])))
-            }
-        }
-        return result
-    }
-
-    // MARK: - Aggregate Status Color
-
-    private func ownColor(for service: MergedService) -> Color {
-        guard service.isEnabled else { return .gray }
-        switch service.runtimeStatus {
-        case .ok: return .green
-        case .pending: return .yellow
-        case .error: return .red
-        case .notApplicable:
-            // Run-once services (e.g. local_resource builds) have no runtime
-            // but updateStatus "ok" means they completed successfully
-            return service.updateStatus == .ok ? .green : .gray
-        case .unknown: return .gray
-        }
-    }
-
-    private func aggregateColor(for service: MergedService) -> Color {
-        let children = childServices(for: service)
-
-        // YAML-only services (not in Tilt) derive color purely from children
-        if !service.existsInTilt {
-            guard !children.isEmpty else { return .gray }
-            let childColors = children.map { aggregateColor(for: $0) }
-            let allGreen = childColors.allSatisfy { $0 == .green }
-            let someGreen = childColors.contains { $0 == .green }
-            let hasError = childColors.contains { $0 == .red }
-            if allGreen { return .green }
-            if hasError { return .red }
-            if someGreen { return .orange }
-            return .gray
-        }
-
-        let own = ownColor(for: service)
-        guard service.isEnabled else { return own }
-        guard !children.isEmpty else { return own }
-
-        let childColors = children.map { aggregateColor(for: $0) }
-        let allColors = [own] + childColors
-
-        let allGreen = allColors.allSatisfy { $0 == .green }
-        let someGreen = allColors.contains { $0 == .green }
-        let hasError = allColors.contains { $0 == .red }
-
-        if allGreen { return .green }
-        if hasError { return .red }
-        if someGreen { return .orange }
-        return own
     }
 
     // MARK: - Filtering
