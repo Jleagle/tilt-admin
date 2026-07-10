@@ -41,9 +41,10 @@ public struct ConfigLoader {
     public static func discoverConfigPath() throws -> String {
         let fm = FileManager.default
         let candidates = [
-            fm.currentDirectoryPath + "/dependencies.yml",
-            fm.currentDirectoryPath + "/dependencies.yaml",
-            NSHomeDirectory() + "/.config/tilt-admin/config.yaml",
+            fm.currentDirectoryPath + "/tilt-admin.yml",
+            fm.currentDirectoryPath + "/tilt-admin.yaml",
+            NSHomeDirectory() + "/.tilt-admin.yml",
+            NSHomeDirectory() + "/.tilt-admin.yaml",
         ]
         for path in candidates {
             if fm.fileExists(atPath: path) {

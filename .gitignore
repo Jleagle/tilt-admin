@@ -1,3 +1,5 @@
 /.build
 dependencies.yml
+tilt-admin.yml
+tilt-admin.yaml
 /docs/superpowers/
