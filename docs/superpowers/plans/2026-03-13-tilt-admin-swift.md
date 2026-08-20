@@ -126,7 +126,7 @@ services:
 
 - [ ] **Step 4: Verify project builds**
 
-Run: `cd /Users/jameseagle/code/jleagle/tilt-admin && swift build`
+Run: `cd ~/code/jleagle/tilt-admin && swift build`
 Expected: Build succeeds, binary produced
 
 - [ ] **Step 5: Commit**
