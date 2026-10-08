@@ -2,13 +2,23 @@
 
 ## Install
 
-```sh
-brew tap jleagle/tilt-admin https://github.com/Jleagle/tilt-admin
-brew trust --tap jleagle/tilt-admin
-brew install tilt-admin
-```
+`brew install Jleagle/tilt-admin/tilt-admin`
 
-(The `brew trust` step is required when `HOMEBREW_REQUIRE_TAP_TRUST` is set.)
+Homebrew compiles it from source on your machine, which needs Xcode 16 or newer
+(the Command Line Tools alone are not enough) on macOS 15 or newer.
+
+### Upgrading from the old tap
+
+Up to 1.0.0 the formula lived in this repo, tapped as `jleagle/tilt-admin`
+straight from the repo URL, and installed a prebuilt binary. `brew` now reports
+that formula as disabled. The new tap has the same name, so untap the old one
+before installing:
+
+```
+brew uninstall tilt-admin
+brew untap jleagle/tilt-admin
+brew install Jleagle/tilt-admin/tilt-admin
+```
 
 ## Configuration
 

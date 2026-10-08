@@ -2,77 +2,70 @@ name: Release
 
 on:
   release:
-    types: [published]
+    types: [ published ]
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag of an existing release, e.g. v1.2.3"
+        required: true
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
 jobs:
-  build:
+  release:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Build universal binary
+      - name: Check tag
         run: |
-          swift build -c release --arch arm64 --arch x86_64
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$TAG' must look like v1.2.3"
+            exit 1
+          fi
 
-      - name: Package binary
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      # The same build the formula runs on the user's machine.
+      - name: Build
+        run: swift build -c release
+
+      - name: Test
+        run: swift test
+
+      # Brew builds from GitHub's source tarball for the tag, so there are no
+      # binaries to attach to the release.
+      - name: Render the formula
         run: |
-          BINARY=".build/apple/Products/Release/TiltAdmin"
-          VERSION="${GITHUB_REF_NAME#v}"
-          ARCHIVE="tilt-admin-${VERSION}-universal-macos.tar.gz"
+          URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.tar.gz"
+          SHA256="$(curl -fsSL --retry 3 "$URL" | shasum -a 256 | cut -d' ' -f1)"
+          ./homebrew/formula.sh "${TAG#v}" "$SHA256" > tilt-admin.rb
+          cat tilt-admin.rb
 
-          mkdir -p dist/tilt-admin/bin
-          cp "$BINARY" dist/tilt-admin/bin/tilt-admin
+      - name: Checkout the Homebrew tap
+        uses: actions/checkout@v7
+        with:
+          repository: Jleagle/homebrew-tilt-admin
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
 
-          tar -czf "$ARCHIVE" -C dist tilt-admin
-          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          shasum -a 256 "$ARCHIVE" | awk '{print $1}' > sha256.txt
-          echo "SHA256=$(cat sha256.txt)" >> "$GITHUB_ENV"
-
-      - name: Attach binary to release
+      - name: Update the Homebrew tap
         run: |
-          gh release upload "$GITHUB_REF_NAME" "$ARCHIVE" --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update Homebrew formula
-        run: |
-          SHA256=$(cat sha256.txt)
-          URL="https://github.com/jleagle/tilt-admin/releases/download/v${VERSION}/tilt-admin-${VERSION}-universal-macos.tar.gz"
-
-          cat > formula.rb << FORMULA
-          class TiltAdmin < Formula
-            desc "Native macOS app for managing Tilt dev services"
-            homepage "https://github.com/jleagle/tilt-admin"
-            url "${URL}"
-            sha256 "${SHA256}"
-            version "${VERSION}"
-
-            depends_on :macos
-
-            def install
-              bin.install "bin/tilt-admin"
-            end
-
-            def caveats
-              <<~EOS
-                tilt-admin needs a config describing your Tilt service dependencies.
-                Create one at ~/.tilt-admin.yml — see
-                https://github.com/jleagle/tilt-admin#configuration
-              EOS
-            end
-          end
-          FORMULA
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git checkout -B main FETCH_HEAD
-          mkdir -p Formula
-          cp formula.rb Formula/tilt-admin.rb
+          mkdir -p tap/Formula
+          cp tilt-admin.rb tap/Formula/tilt-admin.rb
+          cd tap
           git add Formula/tilt-admin.rb
-          git commit -m "Update tilt-admin formula to ${VERSION}"
-          git push origin main
+          if git diff --cached --quiet; then
+            echo "Tap already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update tilt-admin to ${TAG#v}"
+          git push
